@@ -5,10 +5,11 @@ CC = gcc
 CFLAGS = -Wall -g
 OBJECTS = writer.o
 TARGET = writer
+LDFLAGS =
 
 ifneq ($(CROSS_COMPILE),)
 	CC = $(CROSS_COMPILE)gcc
-	CFLAGS += -STATIC
+	LDFLAGS += -static
 endif
 
 # Default target: builds the application
@@ -16,7 +17,7 @@ all: $(TARGET)
 
 # Rule to link the object files into the final executable
 $(TARGET): $(OBJECTS)
-	$(CC) $(OBJECTS) -o $(TARGET)
+	$(CC) $(OBJECTS) $(LDFLAGS) -o $(TARGET)
 
 # Rule to compile .c files into .o files
 writer.o: writer.c
