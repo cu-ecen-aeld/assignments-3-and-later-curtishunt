@@ -9,9 +9,10 @@ OUTDIR=/tmp/aeld
 KERNEL_REPO=git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
 KERNEL_VERSION=v5.15.163
 BUSYBOX_VERSION=1_33_1
-FINDER_APP_DIR=/home/chunt/assignment-1-curtishunt/finder-app/
 ARCH=arm64
 CROSS_COMPILE=aarch64-none-linux-gnu-
+REPO_ROOT=$(pwd)
+FINDER_APP_DIR=${REPO_ROOT}/finder-app
 export PATH=/home/chunt/toolchain/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/bin:$PATH
 
 if [ $# -lt 1 ]
@@ -124,7 +125,10 @@ sudo mknod -m 666 ${OUTDIR}/rootfs/dev/null c 1 3
 sudo mknod -m 600 ${OUTDIR}/rootfs/dev/console c 5 1
 
 # TODO: Clean and build the writer utility
+echo "REPO ROOT IS: ${REPO_ROOT}"
 cd ${FINDER_APP_DIR}
+echo "CURRENT DIR WHERE THE FINDER SHOULD BE: ${FINDER_APP_DIR}"
+echo "FILES IN CURRENT DIR: $(ls .)"
 echo "Compiling writer application..."
 make clean
 make CROSS_COMPILE=${CROSS_COMPILE}
