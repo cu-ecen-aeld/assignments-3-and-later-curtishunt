@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Check number of inputs
 if [ "$#" -ne 2 ]; then
