@@ -140,7 +140,7 @@ make CROSS_COMPILE=${CROSS_COMPILE}
 cp writer ${OUTDIR}/rootfs/home/
 cp finder.sh ${OUTDIR}/rootfs/home/
 cp finder-test.sh ${OUTDIR}/rootfs/home/
-cp -r conf ${OUTDIR}/rootfs/home/
+cp -rL conf ${OUTDIR}/rootfs/home/
 cp autorun-qemu.sh ${OUTDIR}/rootfs/home/
 #change paths from ..conf/ to just conf/ in finder-test.sh
 sed -i 's|\.\./conf|conf|' ${OUTDIR}/rootfs/home/finder-test.sh
