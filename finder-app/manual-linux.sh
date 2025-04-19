@@ -12,7 +12,7 @@ BUSYBOX_VERSION=1_33_1
 ARCH=arm64
 CROSS_COMPILE=aarch64-none-linux-gnu-
 REPO_ROOT=$(pwd)
-FINDER_APP_DIR=${REPO_ROOT}/finder-app
+#FINDER_APP_DIR=${REPO_ROOT}/finder-app
 export PATH=/home/chunt/toolchain/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/bin:$PATH
 
 if [ $# -lt 1 ]
@@ -126,9 +126,9 @@ sudo mknod -m 600 ${OUTDIR}/rootfs/dev/console c 5 1
 
 # TODO: Clean and build the writer utility
 echo "REPO ROOT IS: ${REPO_ROOT}"
-cd ${FINDER_APP_DIR}
-echo "CURRENT DIR WHERE THE FINDER SHOULD BE: ${FINDER_APP_DIR}"
-echo "FILES IN CURRENT DIR: $(ls .)"
+echo "OUTDIR IS: ${OUTDIR}"
+cd ${REPO_ROOT}
+echo "FILES IN REPO ROOT: $(ls .)"
 echo "Compiling writer application..."
 make clean
 make CROSS_COMPILE=${CROSS_COMPILE}
@@ -154,6 +154,7 @@ ln -sf bin/busybox init
 
 # TODO: Create initramfs.cpio.gz
 cd ${OUTDIR}/rootfs
+echo "FILES IN OUTDIR: $(ls .)"
 echo "Creating initramfs..."
 if find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio; then
     gzip -f ${OUTDIR}/initramfs.cpio
