@@ -129,6 +129,7 @@ echo "REPO ROOT IS: ${REPO_ROOT}"
 echo "OUTDIR IS: ${OUTDIR}"
 cd ${REPO_ROOT}
 echo "FILES IN REPO ROOT: $(ls .)"
+echo "Files in conf: $(ls conf/)"
 echo "Compiling writer application..."
 make clean
 make CROSS_COMPILE=${CROSS_COMPILE}
@@ -153,8 +154,10 @@ rm -f init sbin/init
 ln -sf bin/busybox init
 
 # TODO: Create initramfs.cpio.gz
-cd ${OUTDIR}/rootfs
+cd ${OUTDIR}
 echo "FILES IN OUTDIR: $(ls .)"
+cd ${OUTDIR}/rootfs
+echo "FILES IN OUTDIR/rootfs: $(ls .)"
 echo "Creating initramfs..."
 if find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio; then
     gzip -f ${OUTDIR}/initramfs.cpio
@@ -165,5 +168,7 @@ else
 fi
 
 cp ${OUTDIR}/linux-stable/arch/arm64/boot/Image ${OUTDIR}/
+
+cd ${REPO_ROOT}
 
 
