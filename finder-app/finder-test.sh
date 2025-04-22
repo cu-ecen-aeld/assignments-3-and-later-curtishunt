@@ -11,8 +11,8 @@ WRITEDIR=/tmp/aeld-data
 username=$(cat /etc/finder-app/conf/username.txt)
 
 #make sure the script can see finder.sh and writer app
-command -v writer > /dev/null 2>&1 || { echo "writer not found in PATH"; exit 1; }
-command -v finder.sh > /dev/null 2>&1 || { echo "finder.sh not found in PATH"; exit 1; }
+#command -v writer > /dev/null 2>&1 || { echo "writer not found in PATH"; exit 1; }
+#command -v finder.sh > /dev/null 2>&1 || { echo "finder.sh not found in PATH"; exit 1; }
 
 if [ $# -lt 3 ]
 then
@@ -63,7 +63,7 @@ fi
 
 for i in $( seq 1 $NUMFILES)
 do
-	writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
+	$(pwd)/writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
 done
 
 
@@ -83,3 +83,4 @@ else
 	echo "failed: expected  ${MATCHSTR} in ${OUTPUTSTRING} but instead found"
 	exit 1
 fi
+
