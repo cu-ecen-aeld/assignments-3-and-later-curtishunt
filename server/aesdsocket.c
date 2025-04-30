@@ -1,263 +1,167 @@
 #include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <string.h>  
 #include <stdlib.h>
-#include <unistd.h>   
-#include <syslog.h>
+#include <string.h>
+#include <unistd.h>
 #include <signal.h>
-#include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <syslog.h>
+#include <errno.h>
 
-volatile sig_atomic_t exit_flag = 0;
+#define PORT 9000
+#define BACKLOG 3
+#define FILE_IO "/var/tmp/aesdsocket"
 
-int my_socket = -1;
-int count_exits = 0;
+int exit_flag = 0; // Flag for main loop
+int serverfd = -1, clientfd = -1; // File descriptors
 
-void signal_handler(int signal) {
-    if (signal == SIGINT || signal == SIGTERM) {
+int write_to_file(int clientfd);
+void cleanup();
+void signal_handler();
+
+
+int main(int argc, char *argv[]) {
+    struct sockaddr_in server_addr;
+    struct sockaddr_in client_addr;
+    int client_len = sizeof(client_addr);
+    int opt = 1;
+
+    openlog(NULL, 0, LOG_USER); /* Initialize syslog */
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+
+    // check for daemon mode
+    if ((argc == 2) && (strcmp(argv[1], "-d") == 0)) {
+        pid_t pid = fork();
+        if ( pid < 0 ) {
+            syslog(LOG_ERR, "Fork Failed.");
+            cleanup();
+            exit(EXIT_FAILURE);
+        }
+        if ( pid > 0 ) {
+            syslog(LOG_INFO, "Successfully created daemon.");
+            exit(EXIT_SUCCESS);
+        }
+
+        //stop output to the terminal
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
+    }
+
+    // Create Server Socket
+    serverfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverfd < 0) { //socket error handling
+        syslog(LOG_ERR, "Error creating socket");
+        cleanup();
+        exit(EXIT_FAILURE);
+    }
+
+    // Set SO_REUSEADDR option
+    if (setsockopt(serverfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        syslog(LOG_ERR, "ERROR setting SO_REUSEADDR");
+        cleanup();
+        exit(EXIT_FAILURE);
+    }
+
+    // Initialize server address structure
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT); // Replace with your desired port
+
+    // Bind socket to address
+    if (bind(serverfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
+        syslog(LOG_ERR, "ERROR on binding");
+        exit(EXIT_FAILURE);
+    }
+
+    // Listen for connections
+    if (listen(serverfd, BACKLOG) < 0) {
+        syslog(LOG_ERR, "Error listening on socket.");
+        close(serverfd);
+        cleanup();
+        exit(EXIT_FAILURE);
+    }
+
+    while( exit_flag == 0 ) {
+
+        // Accepting client connections
+        if ((clientfd = accept(serverfd, (struct sockaddr *)&client_addr, (socklen_t*)&client_len)) < 0) {
+            syslog(LOG_ERR, "Failed to accept connection.");
+            exit(EXIT_FAILURE);
+        }
+
+        // Log accepted connection
+        char client_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+        syslog(LOG_INFO, "Accepted connection from %s", client_ip);
+
+        int result = write_to_file(clientfd);
+        if (result < 0) {
+            syslog(LOG_ERR, "Error handling request from %s", client_ip);
+        } else if (result == 0) {
+            // Indicate that the client has disconnected properly
+            syslog(LOG_INFO, "Closed connection from %s", client_ip);
+        }
+
+        close(clientfd);
+        clientfd = -1;
+    }
+
+    syslog(LOG_INFO, "Graceful exit!!");
+    cleanup();
+    return 0;
+
+}
+
+//cleanup steps
+void cleanup() {
+    if (serverfd >= 0) close(serverfd);
+    if (clientfd >= 0) close(clientfd);
+    if (remove(FILE_IO) != 0) syslog(LOG_ERR, "Failed to remove file: %s", strerror(errno));
+    syslog(LOG_INFO, "Cleanup was reached!");
+    closelog();
+}
+
+//Signal Handler
+void signal_handler(int sign) {
+    if (sign == SIGINT || sign == SIGTERM) {
         syslog(LOG_INFO, "Caught signal, exiting");
         exit_flag = 1;
-		remove("/var/tmp/aesdsocketdata");
-        printf("Caught exit flag!!!!!");
-		count_exits += 1;
-		syslog(LOG_INFO, "exited %u times", count_exits);
+        cleanup();
+        return;
     }
 }
 
-int main(int argc, char *argv[]) {
+// Rec and Send file data from server and client
+int write_to_file(int clientfd) {
+    int valread;
+    char buffer[1024];
 
-	remove("/var/tmp/aesdsocketdata");
-	// check for daemon
-	int daemon_mode = 0;
-	if (argc == 2 && strcmp(argv[1], "-d") == 0) {
-		daemon_mode = 1;
-	}
+    // Open File to write or append to
+    FILE *fp = fopen(FILE_IO, "a+");
+    if (fp == NULL) {
+        syslog(LOG_ERR, "Server failed to open file.");
+        exit(EXIT_FAILURE);
+    }
 
-	//////////////////////
-	//// create socket ///
-	//////////////////////
-	my_socket = socket(AF_INET, SOCK_STREAM, 0);
-	if (my_socket == -1) {
-		perror("socket creation failed");
-		exit(EXIT_FAILURE);
-	}
-	printf("Socket created!!!!!!!!!!!!!!\n");
-	// bind socket to port 9000
-	struct sockaddr_in server_socket;
-	memset(&server_socket, 0, sizeof(server_socket));
-	server_socket.sin_family = AF_INET;
-	server_socket.sin_addr.s_addr = htonl(INADDR_ANY);
-	server_socket.sin_port = htons(9000);
-	
-	// int opt = 1;
-	// if (setsockopt(my_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
-	// 	perror("setsockopt failed");
-	// 	close(my_socket);
-	// 	exit(EXIT_FAILURE);
-	// }
-	
-	printf("attempting to bind to port 9000\n");
-	if (bind(my_socket, (struct sockaddr *)&server_socket, sizeof(server_socket)) == -1) {
-		perror("failed to bind to port 9000");
-		close(my_socket);
-		exit(EXIT_FAILURE);
-	}
+    // Write string to file until eol is reached
+    while ((valread = recv(clientfd, buffer, sizeof(buffer) -1, 0)) > 0) {
+        buffer[valread] = '\0';
+        fputs(buffer, fp);
+        fflush(fp); 
+        if (strchr(buffer, '\n')) break;
+    }
 
-	printf("Socket bound to port 9000!!!!!!!!!!!!!!\n");
-
-	if (daemon_mode) {
-		pid_t pid = fork();
-		if (pid < 0) {
-			perror("fork failed");
-			close(my_socket);
-			exit(EXIT_FAILURE);
-		}
-	
-		if (pid > 0) {
-			// Parent exits
-			exit(EXIT_SUCCESS);
-		}
-	
-		// Child continues: become session leader
-		if (setsid() < 0) {
-			perror("setsid failed");
-			close(my_socket);
-			exit(EXIT_FAILURE);
-		}
-	
-		// Optional: fork again to fully detach (not required for your assignment)
-	
-		// Change working directory to root
-		if (chdir("/") < 0) {
-			perror("chdir failed");
-			close(my_socket);
-			exit(EXIT_FAILURE);
-		}
-	
-		// Close stdin, stdout, stderr
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
-	}
-
-	//signals that will trigger an exit
-	signal(SIGINT, signal_handler);
-	signal(SIGTERM, signal_handler);
-
-	// start listening on port
-	if (listen(my_socket, 10) == -1) {
-    		perror("Failed to start listening on port 9000");
-    		exit(EXIT_FAILURE);
-	}
-	
-	printf("started listening on port 9000!!!!!\n");
-	
-	// accept client
-	struct sockaddr_in client;
-	int client_socket;
-	socklen_t client_len = sizeof(client);
-	char ip_address[16];
-	ssize_t bytes_sent;
-
-
-
-
-	// accepts client sockets until an exit signal is received
-	while(exit_flag == 0){
-
-		// Added: Fresh buffer for each client connection
-		char *data = malloc(1); 
-		data[0] = '\0'; 
-		size_t data_len = 0;
-		size_t add_len;
-	
-		client_socket = accept(my_socket, (struct sockaddr *)&client, &client_len);
-		if (client_socket == -1) {
-			if (exit_flag) {
-				remove("/var/tmp/aesdsocketdata");
-				free(data);
-				break;
-			}
-			perror("failed to accept a client");
-			remove("/var/tmp/aesdsocketdata"); 
-			free(data);
-			close(my_socket);
-			exit(EXIT_FAILURE);
-		}
-	
-		if (inet_ntop(AF_INET, &client.sin_addr, ip_address, sizeof(ip_address)) == NULL) {
-			perror("inet_ntop failed");
-		} else {
-			syslog(LOG_INFO, "Accepted connection from %s", ip_address);
-		}
-	
-		openlog("aesd_socket", LOG_PID, LOG_USER);
-		syslog(LOG_INFO, "Accepted connection from %s\n", ip_address);	
-	
-		ssize_t bytes_received;
-		char input_buff[1024];
-	
-		FILE *output_file = fopen("/var/tmp/aesdsocketdata", "a+");
-		if (output_file == NULL) {
-			remove("/var/tmp/aesdsocketdata"); 
-			free(data);
-			perror("failed to open file");
-			close(client_socket);
-			close(my_socket);
-			exit(EXIT_FAILURE);
-		}
-	
-		while(1) {
-			memset(input_buff, 0, 1024);
-			bytes_received = recv(client_socket, input_buff, 1024, 0);
-			if(exit_flag){
-				break;
-			}
-	
-			if (bytes_received == -1) {
-				remove("/var/tmp/aesdsocketdata"); 
-				free(data);
-				perror("failed receiving data from client");
-				close(client_socket);
-				close(my_socket);
-				fclose(output_file);
-				exit(EXIT_FAILURE);
-			} else if (bytes_received == 0) {
-				break;
-			} else if (strchr(input_buff, '\n') != NULL) {
-				add_len = bytes_received;
-	
-				// Replaced strcat logic with memcpy + realloc
-				char *temp = realloc(data, data_len + add_len + 1);
-				if (!temp) {
-					remove("/var/tmp/aesdsocketdata"); 
-					free(data);
-					perror("realloc");
-					fclose(output_file);
-					exit(EXIT_FAILURE);
-				}
-				data = temp;
-				memcpy(data + data_len, input_buff, add_len);
-				data_len += add_len;
-				data[data_len] = '\0';
-	
-				fwrite(input_buff, sizeof(char), bytes_received, output_file);
-				break;
-			} else {
-				add_len = bytes_received;
-				char *temp = realloc(data, data_len + add_len + 1);
-				if (!temp) {
-					remove("/var/tmp/aesdsocketdata"); 
-					free(data);
-					perror("realloc");
-					fclose(output_file);
-					return 1;
-				}
-				data = temp;
-				memcpy(data + data_len, input_buff, add_len);
-				data_len += add_len;
-				data[data_len] = '\0';
-	
-				fwrite(input_buff, sizeof(char), bytes_received, output_file);
-			}
-		}
-	
-		fclose(output_file);
-	
-		// Use data_len instead of strlen(data)
-		bytes_sent = send(client_socket, data, data_len, 0);
-		if (bytes_sent == -1) {
-			remove("/var/tmp/aesdsocketdata"); 
-			free(data);	
-			perror("failed to send");
-			close(client_socket);
-			close(my_socket);
-			exit(EXIT_FAILURE);
-		}
-	
-		if(close(client_socket)==-1){
-			remove("/var/tmp/aesdsocketdata"); 
-			free(data);
-			perror("failed to close client socket");
-			close(my_socket);
-			exit(EXIT_FAILURE);	
-		}
-	
-		syslog(LOG_INFO, "Closing connection with client: %s", ip_address);
-	
-		// Free data buffer per client
-		free(data);
-	}
-	
-	//delete file
-	remove("/var/tmp/aesdsocketdata"); 
-	// free(data);
-	// Close the server socket
-	close(my_socket);
-	printf("Closed Server Socket!!!!!!!!!!\n");
-	// close syslog
-	closelog();
-	
-	return 0;
+    // Send file back to client until eof is reached
+    fseek(fp, 0, SEEK_SET);
+    while ((valread = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
+        send(clientfd, buffer, valread, 0);
+    }
+    fclose(fp);
+    return 0;
 }

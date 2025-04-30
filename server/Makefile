@@ -1,7 +1,7 @@
 all: aesdsocket
 
-aesdsocket: aesdsocket_0.c
-	gcc -Wall -g aesdsocket_0.c -o aesdsocket
+aesdsocket: aesdsocket.c
+	gcc -Wall -g aesdsocket.c -o aesdsocket
 
 clean:
 	rm -f aesdsocket
