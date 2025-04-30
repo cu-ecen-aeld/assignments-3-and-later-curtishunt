@@ -1,8 +1,13 @@
-CC ?= gcc
+CC = gcc
 all: aesdsocket
 
+
+ifneq ($(CROSS_COMPILE),)
+	CC = $(CROSS_COMPILE)gcc
+endif
+
 aesdsocket: aesdsocket.c
-	$(CROSS_COMPILE)$(CC) -Wall -g aesdsocket.c -o aesdsocket
+	$(CC) -Wall -g aesdsocket.c -o aesdsocket
 
 clean:
 	rm -f aesdsocket
