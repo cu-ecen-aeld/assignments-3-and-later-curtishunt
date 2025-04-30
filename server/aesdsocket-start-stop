@@ -1,26 +1,19 @@
 #!/bin/sh
 
-DAEMON="/usr/bin/aesdsocket"
-PIDFILE="/var/run/aesdsocket.pid"
-DAEMON_ARGS="-d"
-
 case "$1" in
     start)
         echo "Starting aesdsocket..."
-        start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE" --exec "$DAEMON" -- $DAEMON_ARGS
+        start-stop-daemon -S -n aesdsocket -a aesdsocket -- -d
         ;;
     stop)
         echo "Stopping aesdsocket..."
-        start-stop-daemon --stop --pidfile "$PIDFILE" --retry 5
-        ;;
-    restart)
-        $0 stop
-        $0 start
+        start-stop-daemon -K -n aesdsocket
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart}"
+        echo "Usage: $0 {start|stop}"
         exit 1
         ;;
 esac
 
 exit 0
+
