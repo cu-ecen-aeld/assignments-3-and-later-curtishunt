@@ -1,7 +1,8 @@
+CC=gcc
 all: aesdsocket
 
 aesdsocket: aesdsocket.c
-	gcc -Wall -g aesdsocket.c -o aesdsocket
+	$(CROSS_COMPILE)gcc -Wall -g aesdsocket.c -o aesdsocket
 
 clean:
 	rm -f aesdsocket
