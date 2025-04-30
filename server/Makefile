@@ -1,9 +1,9 @@
-CC = gcc
+CC ?= aarch64-linux-gnu-gcc
 all: aesdsocket
 
 
 ifneq ($(CROSS_COMPILE),)
-	CC = $(CROSS_COMPILE)gcc
+	CC = aarch64-linux-gnu-gcc
 endif
 
 aesdsocket: aesdsocket.c
