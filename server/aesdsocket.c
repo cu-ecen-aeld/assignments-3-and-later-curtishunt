@@ -227,8 +227,9 @@ void *handle_connection(void *arg) {
     char buffer[BUFFER_SIZE];
 
     ssize_t bytes_read;
+    pthread_mutex_lock(&file_mutex);
     while ((bytes_read = recv(tdata, buffer, BUFFER_SIZE, 0)) > 0) {
-        pthread_mutex_lock(&file_mutex);
+        
         if (write(fp, buffer, bytes_read) != bytes_read) {
             syslog(LOG_ERR, "Failed to write received data to file: %s", strerror(errno));
             pthread_mutex_unlock(&file_mutex);
@@ -236,14 +237,16 @@ void *handle_connection(void *arg) {
         } else {
             syslog(LOG_INFO, "Read %ld bytes", bytes_read);
         }
-        pthread_mutex_unlock(&file_mutex);
+        
         // Check for end of data transfer
         if (buffer[bytes_read - 1] == '\n') {
             break;
         }
     }
+    pthread_mutex_unlock(&file_mutex);
     fsync(fp);
     close(fp);
+    
 
     if (bytes_read < 0) {
         syslog(LOG_ERR, "Failed to receive data: %s, recv returned: %zd", strerror(errno), bytes_read);
@@ -255,17 +258,18 @@ void *handle_connection(void *arg) {
         close(tdata);
         return NULL;
     }
-
+    pthread_mutex_lock(&file_mutex);
     while ((bytes_read = read(fp, buffer, BUFFER_SIZE)) > 0) {
         if (send(tdata, buffer, bytes_read, 0) < 0) {
             syslog(LOG_ERR, "Failed to send data to client: %s", strerror(errno));
             break;
         }
     }
-
+    pthread_mutex_unlock(&file_mutex);
     close(fp);
     close(tdata);
 
+    
     syslog(LOG_INFO, "Closed connection to %s", client_ip);
     return NULL;
 
