@@ -5,11 +5,12 @@ CFLAGS = -Wall -Wextra  -Werror
 SRCS = aesdsocket.c
 
 OBJS = $(SRCS:.c=.o)
+LDFLAGS ?= -lpthread -lrt
 
 all: aesdsocket
 
 aesdsocket: $(OBJS)
-	$(CC) $(CFLAGS) -g -o aesdsocket $(OBJS) -lpthread -lrt
+	$(CC) $(CFLAGS) $(LDFLAGS) -g -o aesdsocket $(OBJS)
 
 clean:
 	rm -f aesdsocket $(OBJS)
