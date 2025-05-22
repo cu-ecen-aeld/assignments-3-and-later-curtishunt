@@ -252,7 +252,7 @@ void *handle_connection(void *arg) {
         syslog(LOG_ERR, "Failed to receive data: %s, recv returned: %zd", strerror(errno), bytes_read);
     }
 
-    fp = open(FILE_IO, O_RDONLY);
+    fp = open(FILE_IO, O_RDONLY, 0644);
     if (fp < 0) {
         syslog(LOG_ERR, "Failed to open file for reading: %s", strerror(errno));
         close(tdata);
@@ -307,7 +307,7 @@ void timer_handler(union sigval dummyval) {
 
     // lock mutex to access shared file at FILE_IO
     pthread_mutex_lock(&file_mutex);
-    int file_fd = open(FILE_IO, O_WRONLY | O_CREAT | O_APPEND);
+    int file_fd = open(FILE_IO, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (file_fd >= 0) {
         if(write(file_fd, timestamp, strlen(timestamp)) == -1){
             syslog(LOG_ERR, "Error writing timer to file: %s", strerror(errno));
