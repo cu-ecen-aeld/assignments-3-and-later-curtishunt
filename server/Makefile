@@ -1,19 +1,15 @@
-CC ?= gcc #aarch64-none-linux-gnu-gcc
-
-CFLAGS = -Wall -Wextra  -Werror
-
-SRCS = aesdsocket.c
-
-OBJS = $(SRCS:.c=.o)
+CC ?= $(CROSS_COMPILE)gcc
+CFLAGS= -g -Wall -Werror -Wno-unused-result -Wno-maybe-uninitialized -I. 
 LDFLAGS ?= -lpthread -lrt
 
-all: aesdsocket
+all: aesdsocket_build
 
-aesdsocket: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -g -o aesdsocket $(OBJS)
+aesdsocket_build: aesdsocket.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o aesdsocket aesdsocket.o 
+
+%.o: %.c 
+	$(CC) $(CFLAGS) -c -o $@ $< $(CFLAGS)
 
 clean:
-	rm -f aesdsocket $(OBJS)
-
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	rm -rf *.o
+	rm -rf aesdsocket

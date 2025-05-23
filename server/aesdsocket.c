@@ -252,20 +252,20 @@ void *handle_connection(void *arg) {
         syslog(LOG_ERR, "Failed to receive data: %s, recv returned: %zd", strerror(errno), bytes_read);
     }
 
-    fp = open(FILE_IO, O_RDONLY, 0644);
-    if (fp < 0) {
+    FILE *filehandle = fopen(FILE_IO, "r");
+    if (filehandle == NULL) {
         syslog(LOG_ERR, "Failed to open file for reading: %s", strerror(errno));
         close(tdata);
         return NULL;
     }
-    pthread_mutex_lock(&file_mutex);
-    while ((bytes_read = read(fp, buffer, BUFFER_SIZE)) > 0) {
+    //pthread_mutex_lock(&file_mutex);
+    while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, filehandle)) > 0) {
         if (send(tdata, buffer, bytes_read, 0) < 0) {
             syslog(LOG_ERR, "Failed to send data to client: %s", strerror(errno));
             break;
         }
     }
-    pthread_mutex_unlock(&file_mutex);
+    //pthread_mutex_unlock(&file_mutex);
     close(fp);
     close(tdata);
 
@@ -303,16 +303,16 @@ void timer_handler(union sigval dummyval) {
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now); // get time in a human readable format
     char timestamp[100];
-    strftime(timestamp, sizeof(timestamp), "timestamp:%Y-%m-%d %H:%M:%S\n", tm_info);
-
+    int size = strftime(timestamp, sizeof(timestamp), "timestamp:%Y-%m-%d %H:%M:%S\n", tm_info);
+    int file_fd = open(FILE_IO, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (file_fd < 0) {
+        syslog(LOG_ERR, "Failed opening file for writing timestamp");
+        exit(EXIT_FAILURE);
+    }
     // lock mutex to access shared file at FILE_IO
     pthread_mutex_lock(&file_mutex);
-    int file_fd = open(FILE_IO, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (file_fd >= 0) {
-        if(write(file_fd, timestamp, strlen(timestamp)) == -1){
+        if(write(file_fd, timestamp, size)){
             syslog(LOG_ERR, "Error writing timer to file: %s", strerror(errno));
         }
-        close(file_fd);
-    }
     pthread_mutex_unlock(&file_mutex);
 }
