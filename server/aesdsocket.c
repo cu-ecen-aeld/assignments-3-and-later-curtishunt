@@ -215,36 +215,35 @@ void *handle_connection(void *arg) {
     syslog(LOG_INFO, "Accepted connection from %s", client_ip);
 
     // open a file for appending data
-    int fp = open(FILE_IO, O_RDWR | O_CREAT | O_APPEND, 0644);
-    if(fp){
-        syslog(LOG_INFO, "Opened file for writing data");
-    } else {
+    int fp = open(FILE_IO, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if(fp == -1){
         syslog(LOG_ERR, "Client failed to open file.");
         close (tdata);
         return NULL;
+    } else {
+        syslog(LOG_INFO, "Opened file for writing data");
     }
 
     char buffer[BUFFER_SIZE];
 
     ssize_t bytes_read;
-    pthread_mutex_lock(&file_mutex);
+    
     while ((bytes_read = recv(tdata, buffer, BUFFER_SIZE, 0)) > 0) {
-        
+        pthread_mutex_lock(&file_mutex);
         if (write(fp, buffer, bytes_read) != bytes_read) {
             syslog(LOG_ERR, "Failed to write received data to file: %s", strerror(errno));
             pthread_mutex_unlock(&file_mutex);
             break;
-        } else {
-            syslog(LOG_INFO, "Read %ld bytes", bytes_read);
-        }
+        } 
+        fsync(fp);
+        pthread_mutex_unlock(&file_mutex);
+        syslog(LOG_INFO, "Read %ld bytes", bytes_read);
         
         // Check for end of data transfer
         if (buffer[bytes_read - 1] == '\n') {
             break;
         }
     }
-    pthread_mutex_unlock(&file_mutex);
-    fsync(fp);
     close(fp);
     
 
@@ -311,8 +310,10 @@ void timer_handler(union sigval dummyval) {
     }
     // lock mutex to access shared file at FILE_IO
     pthread_mutex_lock(&file_mutex);
-        if(write(file_fd, timestamp, size)){
+        if(write(file_fd, timestamp, size) != size){
             syslog(LOG_ERR, "Error writing timer to file: %s", strerror(errno));
         }
+    fsync(file_fd);
     pthread_mutex_unlock(&file_mutex);
+    close(file_fd);
 }
