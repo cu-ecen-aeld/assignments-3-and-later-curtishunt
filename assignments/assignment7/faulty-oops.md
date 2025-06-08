@@ -1,5 +1,5 @@
 # Oops File Analysis
-For education purposes I ran a module that was faulty and will analyze the Linux Kernel panic output below.
+For education purposes a module that was faulty was ran, and analysis of the Linux Kernel panic output is included below.
 
 The faulty.ko module tries to dereference a NULL pointer reference, which points to the adress 0x0000000. The Oops output first complains about this:
 ```
@@ -26,12 +26,12 @@ Hardware name: linux,dummy-virt (DT)
 pstate: 80000005 (Nzcv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
 ```
 
-Now the kernel shows what instruction the pc (program counter) was pointing to when the error occurred.  It was inside the faulty_write function.
+Now the kernel shows what instruction the pc (program counter) was pointing to when the error occurred.  10 bytes into the faulty_write function.
 ```
 pc : faulty_write+0x10/0x20 [faulty]
 ```
 
-The state of the rest of the registers in the CPU are included as well.  It shows the link register, where execution will continue once the function finishes and the stack pointer. As well as a dump of registers x0 to x29.
+The state of the rest of the registers in the CPU are included as well.  It shows the link register, where execution will continue once the function finishes. As well as the stack pointer and a dump of registers x0 to x29.
 ``` 
 lr : vfs_write+0xc8/0x390
 sp : ffffffc008dd3d20
@@ -47,7 +47,7 @@ x5 : 0000000000000001 x4 : ffffffc000787000 x3 : ffffffc008dd3dc0
 x2 : 000000000000000c x1 : 0000000000000000 x0 : 0000000000000000
 ```
 
-The call trace shows that the error started with a user space syscall. The arm54_sys_write is a function that allows userspace functions to write data to a file. Ultimately the faulty_write function was called and thats where the error occurred. This shows us valuable debugging information to discover where errors originate.
+The call trace shows that the error started with a user space syscall. The arm54_sys_write is a function that allows userspace syscalls to write data to a file. Ultimately the faulty_write function was called and thats where the error occurred. This gives us valuable debugging information to discover where errors originate.
 ```
 Call trace:
  faulty_write+0x10/0x20 [faulty]
