@@ -10,6 +10,7 @@
 
 #ifdef __KERNEL__
 #include <linux/string.h>
+#include <linux/slab.h>
 #else
 #include <string.h>
 #endif
@@ -73,13 +74,16 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     /**
     * TODO: implement per description
     */
-    // Add entry at the current write offset
-    buffer->entry[buffer->in_offs] = *add_entry;
 
     // increment out_offs only if buffer is full
-    if (buffer->full)  
+    if (buffer->full)  {
+        // free the data that will be overwritten 
+        kfree(buffer->entry[buffer->out_offs].buffptr);
         buffer->out_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-    
+    }
+
+    // Add entry at the current write offset
+    buffer->entry[buffer->in_offs] = *add_entry;
 
     // increment in_offs no matter what
     buffer->in_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;

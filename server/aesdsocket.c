@@ -17,8 +17,18 @@
 
 #define PORT 9000
 #define BACKLOG 10
-#define FILE_IO "/var/tmp/aesdsocket"
 #define BUFFER_SIZE 1024
+
+// build switch
+#ifndef USE_AESD_CHAR_DEVICE
+#define USE_AESD_CHAR_DEVICE=1
+#endif
+
+#if USE_AESD_CHAR_DEVICE
+#define FILE_IO "/dev/aesdchar"
+#else
+#define FILE_IO "/var/tmp/aesdsocket"
+#endif
 
 int exit_flag = 0; // Flag for main loop
 int serverfd = -1; // File descriptors
@@ -45,8 +55,6 @@ pthread_mutex_t file_mutex;
 
 int main(int argc, char *argv[]) {
     
-    
-
     SLIST_INIT(&head);
 
     // Open System Log
@@ -125,7 +133,11 @@ int main(int argc, char *argv[]) {
 
     pthread_mutex_init(&file_mutex, NULL);
     SLIST_INIT(&head);
+
+    // only uses timestamping if char device is not being used
+    #if !USE_AESD_CHAR_DEVICE
     setup_timer();
+    #endif
 
     while( true ) {
 
@@ -184,10 +196,12 @@ void signal_handler(int sig) {
         if (serverfd >= 0) {
             close(serverfd);
         }
-        // Delete file
+        // Delete file if not using char module
+        #if !USE_AESD_CHAR_DEVICE
         if (remove(FILE_IO) != 0) {
             syslog(LOG_ERR, "Failed to delete the file %s: %s", FILE_IO, strerror(errno));
         }
+        #endif
         // Destroy the mutex
         pthread_mutex_destroy(&file_mutex); 
         syslog(LOG_INFO, "Sockets terminated");
@@ -202,6 +216,14 @@ void *handle_connection(void *arg) {
     int tdata = *(int*)arg;
     free(arg);
 
+    // set open file flags depending on using device or file
+    int open_flags;
+    #if USE_AESD_CHAR_DEVICE
+    open_flags = O_RDWR;  // for device file: read & write
+    #else
+    open_flags = O_WRONLY | O_CREAT | O_APPEND;
+    #endif
+
     // make array for clients IP
     char client_ip[INET_ADDRSTRLEN];
     struct sockaddr_in client_addr;
@@ -215,7 +237,7 @@ void *handle_connection(void *arg) {
     syslog(LOG_INFO, "Accepted connection from %s", client_ip);
 
     // open a file for appending data
-    int fp = open(FILE_IO, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    int fp = open(FILE_IO, open_flags, 0644);
     if(fp == -1){
         syslog(LOG_ERR, "Client failed to open file.");
         close (tdata);
@@ -274,6 +296,7 @@ void *handle_connection(void *arg) {
 
 }
 
+#if !USE_AESD_CHAR_DEVICE
 void setup_timer() {
     struct sigevent sev;
     sev.sigev_notify = SIGEV_THREAD;
@@ -317,3 +340,4 @@ void timer_handler(union sigval dummyval) {
     pthread_mutex_unlock(&file_mutex);
     close(file_fd);
 }
+#endif
