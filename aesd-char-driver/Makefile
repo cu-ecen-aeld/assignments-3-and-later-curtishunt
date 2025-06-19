@@ -20,6 +20,9 @@ else
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD       := $(shell pwd)
 
+CROSS_COMPILE ?= aarch64-buildroot-linux-gnu-
+ARCH ?= arm64
+
 modules:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
