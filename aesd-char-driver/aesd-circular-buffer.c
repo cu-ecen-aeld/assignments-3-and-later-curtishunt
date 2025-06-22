@@ -44,13 +44,18 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
         entries_count = buffer->in_offs;
     }
                                            
-
+    // loop through all valid entries in buffer
+    // oldest valid entry is buffer->out_offs, newest is buffer->out_offs+entries_count
     for (uint8_t index = 0; index < entries_count; index++) {
+        // modulo division to make the output wrap around correctly
+        // eg. out_offs = 9, index = 7, 9+7=16, 16%10=6
         entry_index = (buffer->out_offs + index) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
         struct aesd_buffer_entry *entry = &buffer->entry[entry_index];
 
+        // check if running_total + new entry is larger than the desired offset
+        // If its larger this would mean that this particular entry is the desired entry
         if (char_offset < (running_total + entry->size)) {
-            // Found the entry containing the offset
+            // Find how many bytes into the current entry the desired offset is
             *entry_offset_byte_rtn = char_offset - running_total;
             return entry;
         }
@@ -79,7 +84,7 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     if (buffer->full)  {
         // free the data that will be overwritten 
         kfree(buffer->entry[buffer->out_offs].buffptr);
-        buffer->out_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+        buffer->out_offs = (buffer->out_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
     }
 
     // Add entry at the current write offset
