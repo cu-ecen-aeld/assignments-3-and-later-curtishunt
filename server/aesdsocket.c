@@ -301,27 +301,28 @@ void *handle_connection(void *arg) {
             break;
         }
     }
-    close(fp);
+    // close(fp);
     
 
     if (bytes_read < 0) {
         syslog(LOG_ERR, "Failed to receive data: %s, recv returned: %zd", strerror(errno), bytes_read);
     }
 
-    FILE *filehandle = fopen(FILE_IO, "r");
-    if (filehandle == NULL) {
-        syslog(LOG_ERR, "Failed to open file for reading: %s", strerror(errno));
-        close(tdata);
-        return NULL;
-    }
-    //pthread_mutex_lock(&file_mutex);
-    while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, filehandle)) > 0) {
+    // FILE *filehandle = fopen(FILE_IO, "r");
+    // if (filehandle == NULL) {
+    //     syslog(LOG_ERR, "Failed to open file for reading: %s", strerror(errno));
+    //     close(tdata);
+    //     return NULL;
+    // }
+    pthread_mutex_lock(&file_mutex);
+
+    while ((bytes_read = read(fp, buffer, BUFFER_SIZE)) > 0) {
         if (send(tdata, buffer, bytes_read, 0) < 0) {
             syslog(LOG_ERR, "Failed to send data to client: %s", strerror(errno));
             break;
         }
     }
-    //pthread_mutex_unlock(&file_mutex);
+    pthread_mutex_unlock(&file_mutex);
     close(fp);
     close(tdata);
 

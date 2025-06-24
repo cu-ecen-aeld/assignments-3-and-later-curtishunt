@@ -62,7 +62,12 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     mutex_lock(&aesd_device.lock);
 
     while (count > 0){
+        // PDEBUG("attempting to read from entry number: %llu, offset: %zu", (unsigned long long)*f_pos, entry_offset);
         entry = aesd_circular_buffer_find_entry_offset_for_fpos(&aesd_device.buffer, *f_pos, &entry_offset);
+        PDEBUG("attempting to read from entry number: %llu, offset: %zu", (unsigned long long)*f_pos, entry_offset);
+        //PDEBUG("read @f_pos=%lld: entry @offset=%zu, size=%zu", *f_pos, entry_offset, entry->size);
+
+        //PDEBUG("Read %.*s from buffer", (int)entry->size, entry->buffptr);
         if (!entry) {
             break;
         }
@@ -96,7 +101,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     //PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     
     //debug//
-    printk(KERN_DEBUG "starting aesd_write\n");
+    PDEBUG("starting aesd_write\n");
     // for (size_t j=0; j<count; j++){
     //     printk(KERN_DEBUG "buf input %zu: %c\n", j, buf[j]);
     // }
@@ -171,8 +176,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
         aesd_circular_buffer_add_entry(&aesd_device.buffer, &entry);
 
-        //printk(KERN_INFO "Added entry: %.*s", (int)entry.size, entry.buffptr);
-        //printk(KERN_INFO "Buffer in_offs: %d, out_offs: %d, full: %d\n", aesd_device.buffer.in_offs, aesd_device.buffer.out_offs, aesd_device.buffer.full);
+        PDEBUG("Added entry: %.*s", (int)entry.size, entry.buffptr);
+        PDEBUG("Buffer in_offs: %d, out_offs: %d, full: %d\n", aesd_device.buffer.in_offs, aesd_device.buffer.out_offs, aesd_device.buffer.full);
         uint8_t entries_count = aesd_device.buffer.full ? AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED : aesd_device.buffer.in_offs;
         // printk(KERN_INFO "Entries in buffer: %d\n", entries_count);
 
