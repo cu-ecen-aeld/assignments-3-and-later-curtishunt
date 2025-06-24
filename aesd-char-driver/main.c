@@ -29,7 +29,7 @@ struct aesd_dev aesd_device;
 
 int aesd_open(struct inode *inode, struct file *filp)
 {
-    PDEBUG("open");
+    PDEBUG("OPENED!!!!!!!!!!!!!");
     /**
      * TODO: handle open
      */
@@ -50,58 +50,100 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = 0;
-    ssize_t total_copied = 0;
-    //PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-    /**
+    PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
+    /*
      * TODO: handle read
      */
-    
-    struct aesd_buffer_entry *entry;
-    size_t entry_offset;
+    struct aesd_dev *dev = filp->private_data;
 
-    mutex_lock(&aesd_device.lock);
+	size_t entry_offset;
 
-    while (count > 0){
-        // PDEBUG("attempting to read from entry number: %llu, offset: %zu", (unsigned long long)*f_pos, entry_offset);
-        entry = aesd_circular_buffer_find_entry_offset_for_fpos(&aesd_device.buffer, *f_pos, &entry_offset);
-        PDEBUG("attempting to read from entry number: %llu, offset: %zu", (unsigned long long)*f_pos, entry_offset);
-        //PDEBUG("read @f_pos=%lld: entry @offset=%zu, size=%zu", *f_pos, entry_offset, entry->size);
+	if (mutex_lock_interruptible(&dev->lock)){
+		return -ERESTARTSYS;
+	}
 
-        //PDEBUG("Read %.*s from buffer", (int)entry->size, entry->buffptr);
-        if (!entry) {
-            break;
-        }
+	struct aesd_buffer_entry* entry = aesd_circular_buffer_find_entry_offset_for_fpos(
+		&(dev->buffer),
+		*f_pos,
+		&entry_offset
+	);
 
-        // amount of bytes in entry that are desired
-        size_t bytes_available = entry->size - entry_offset;
-        // amount of bytes
-        size_t bytes_to_copy = min(count, bytes_available);
+	mutex_unlock(&dev->lock);
 
-        if (copy_to_user(buf, entry->buffptr + entry_offset, bytes_to_copy)) {
-            retval = -EFAULT;
-            goto out;
-        }
+	if (entry != NULL){
+		size_t unread_bytes = entry->size - entry_offset;
+		size_t read_size = (unread_bytes > count) ? count : unread_bytes;
 
-        *f_pos += bytes_to_copy;
-        count -= bytes_to_copy;
-        total_copied += bytes_to_copy;
-        buf += bytes_to_copy;
-    }   
-    retval = total_copied;
+		PDEBUG("Reading message %.*s of size %zu", read_size, entry->buffptr + entry_offset, read_size);
+		if (copy_to_user(buf, entry->buffptr + entry_offset, read_size)){
+			return -EINTR;
+		}
+		*f_pos += read_size;
+		retval = read_size;
+	}
 
-    out:
-        mutex_unlock(&aesd_device.lock);
-        return retval;
+    return retval;
 }
+
+// ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
+//                 loff_t *f_pos)
+// {
+//     ssize_t retval = 0;
+//     ssize_t total_copied = 0;
+//     //PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
+//     /**
+//      * TODO: handle read
+//      */
+//     PDEBUG("Starting READ in DRIVER!!");
+
+//     struct aesd_buffer_entry *entry;
+//     size_t entry_offset;
+
+//     mutex_lock(&aesd_device.lock);
+
+//     while (count > 0){
+//         // PDEBUG("attempting to read from entry number: %llu, offset: %zu", (unsigned long long)*f_pos, entry_offset);
+//         entry = aesd_circular_buffer_find_entry_offset_for_fpos(&aesd_device.buffer, *f_pos, &entry_offset);
+//         PDEBUG("attempting to read at f_pos: %lld, resolved to entry offset: %zu", *f_pos, entry_offset);
+
+//         //PDEBUG("read @f_pos=%lld: entry @offset=%zu, size=%zu", *f_pos, entry_offset, entry->size);
+
+//         //PDEBUG("Read %.*s from buffer", (int)entry->size, entry->buffptr);
+//         if (!entry) {
+//             break;
+//         }
+
+//         // amount of bytes in entry that are desired
+//         size_t bytes_available = entry->size - entry_offset;
+//         // amount of bytes
+//         size_t bytes_to_copy = min(count, bytes_available);
+
+//         if (copy_to_user(buf, entry->buffptr + entry_offset, bytes_to_copy)) {
+//             retval = -EFAULT;
+//             goto out;
+//         }
+
+//         *f_pos += bytes_to_copy;
+//         count -= bytes_to_copy;
+//         total_copied += bytes_to_copy;
+//         buf += bytes_to_copy;
+//     }   
+//     retval = total_copied;
+
+//     out:
+//         mutex_unlock(&aesd_device.lock);
+//         PDEBUG("FINISHED READ IN DRIVER!!");
+//         return retval;
+// }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = -ENOMEM;
-    //PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
+    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     
     //debug//
-    PDEBUG("starting aesd_write\n");
+    PDEBUG("starting aesd_write!!!!!");
     // for (size_t j=0; j<count; j++){
     //     printk(KERN_DEBUG "buf input %zu: %c\n", j, buf[j]);
     // }
@@ -203,117 +245,223 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     mutex_unlock(&aesd_device.lock);
 
+    PDEBUG("Write complete in DRIVER!!");
     return retval;
 }
 
-loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
-{
-    loff_t new_pos = 0;
+
+loff_t aesd_llseek(struct file *filp, loff_t offset, int whence){
     struct aesd_dev *dev = filp->private_data;
-    loff_t curr_size = 0;
-    uint8_t index;
 
-    mutex_lock(&dev->lock);
+	size_t buff_size = 0;
 
-    // Compute total size across all valid entries
-    for (index = 0; index < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; index++) {
-        if (dev->buffer.entry[index].buffptr)
-            curr_size += dev->buffer.entry[index].size;
-    }
+	uint8_t index;
+	struct aesd_buffer_entry *entry;
+	AESD_CIRCULAR_BUFFER_FOREACH(entry,&(dev->buffer),index) {
+		buff_size += entry->size;
+	}
 
-    switch (whence) {
-        case SEEK_SET:
-            new_pos = offset;
-            break;
-        case SEEK_CUR:
-            new_pos = filp->f_pos + offset;
-            break;
-        case SEEK_END:
-            new_pos = curr_size + offset; // offset sould be < 0 in this case
-            break;
-        default:
-            mutex_unlock(&dev->lock);
-            return -EINVAL;
-    }
+	PDEBUG("Seeking offset %ld in buffer with size %ld", offset, buff_size);
 
-    // check if we went out of the bounds of our current buffer size
-    if (new_pos < 0 || new_pos > curr_size) {
-        mutex_unlock(&dev->lock);
-        return -EINVAL;
-    }
-
-    filp->f_pos = new_pos;
-    mutex_unlock(&dev->lock);
-
-    return new_pos;
+	return fixed_size_llseek(filp, offset, whence, buff_size);
 }
+// loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
+// {
+//     PDEBUG("Starting LLSEEK!!");
+//     loff_t new_pos = 0;
+//     struct aesd_dev *dev = filp->private_data;
+//     loff_t curr_size = 0;
+//     uint8_t index;
 
-long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
-{
-    struct aesd_seekto seekto;
-    struct aesd_dev *dev = filp->private_data;
-    struct aesd_buffer_entry *entry;
-    size_t offset = 0;
-    uint8_t index;
-    uint8_t entries_count;
+//     mutex_lock(&dev->lock);
+
+//     // Compute total size across all valid entries
+//     for (index = 0; index < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; index++) {
+//         if (dev->buffer.entry[index].buffptr)
+//             curr_size += dev->buffer.entry[index].size;
+//     }
+
+//     switch (whence) {
+//         case SEEK_SET:
+//             new_pos = offset;
+//             break;
+//         case SEEK_CUR:
+//             new_pos = filp->f_pos + offset;
+//             break;
+//         case SEEK_END:
+//             new_pos = curr_size + offset; // offset sould be < 0 in this case
+//             break;
+//         default:
+//             mutex_unlock(&dev->lock);
+//             return -EINVAL;
+//     }
+
+//     // check if we went out of the bounds of our current buffer size
+//     if (new_pos < 0 || new_pos > curr_size) {
+//         mutex_unlock(&dev->lock);
+//         return -EINVAL;
+//     }
+
+//     filp->f_pos = new_pos;
+//     mutex_unlock(&dev->lock);
+
+//     PDEBUG("Finished LLSEEK!!");
+
+
+//     return new_pos;
+// }
+
+// long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+// {
+//     struct aesd_seekto seekto;
+//     struct aesd_dev *dev = filp->private_data;
+//     struct aesd_buffer_entry *entry;
+//     size_t offset = 0;
+//     uint8_t index;
+//     uint8_t entries_count;
 
     
-    PDEBUG("Starting IOCTL command!!!!!\ncmd number is: %u", cmd);
+//     PDEBUG("Starting IOCTL command!!!!!\ncmd number is: %u", cmd);
 
-    // check if command is iocseekto, return operation not permitted if not (EPERM)
-    if (cmd != AESDCHAR_IOCSEEKTO) {
-        PDEBUG("cmd number did not match");
-        return -EPERM; 
-    } else {
-        // copy value of arg from user space into kernel space structure seekto
-        if (copy_from_user(&seekto, (const void __user *)arg, sizeof(seekto))){
-            PDEBUG("copy to user failed");
-            return -EFAULT;
-        }
-        mutex_lock(&dev->lock);
-        if(dev->buffer.full){
-            entries_count = AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-        } else {
-            entries_count = dev->buffer.in_offs;
-        }
-        PDEBUG("Entries count: %u", entries_count);
-        // check boundaries of desired seek location
-        if (seekto.write_cmd >= entries_count) {
-            PDEBUG("Invalid index, seekto.write was >= entries count");
-            mutex_unlock(&dev->lock);
-            return -EINVAL;
-        }
-
-
-        // find entry containing desired location in circular buffer
-        index = (dev->buffer.out_offs + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-        entry = &dev->buffer.entry[index];
-
-        // check offset boundaries within the entry 
-        if (seekto.write_cmd_offset >= entry->size) {
-            PDEBUG("Invalid offset, seekto.write_cmd_offset was >= entries->size");
-            mutex_unlock(&dev->lock);
-            return -EINVAL;
-        }
-
-        PDEBUG("Seeking to write line %u, offset %u of circular buffer", seekto.write_cmd, seekto.write_cmd_offset);
+//     // check if command is iocseekto, return operation not permitted if not (EPERM)
+//     if (cmd != AESDCHAR_IOCSEEKTO) {
+//         PDEBUG("cmd number did not match");
+//         return -EPERM; 
+//     } else {
+//         // copy value of arg from user space into kernel space structure seekto
+//         if (copy_from_user(&seekto, (const void __user *)arg, sizeof(seekto))){
+//             PDEBUG("copy to user failed");
+//             return -EFAULT;
+//         }
+//         mutex_lock(&dev->lock);
+//         if(dev->buffer.full){
+//             entries_count = AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+//         } else {
+//             entries_count = dev->buffer.in_offs;
+//         }
+//         PDEBUG("Entries count: %u", entries_count);
+//         // check boundaries of desired seek location
+//         if ((!dev->buffer.full && seekto.write_cmd >= dev->buffer.in_offs) ||
+//             (dev->buffer.full && seekto.write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)) {
+//             PDEBUG("Invalid write_cmd index %u (in_offs = %u, full = %d)", 
+//                 seekto.write_cmd, dev->buffer.in_offs, dev->buffer.full);
+//             mutex_unlock(&dev->lock);
+//             return -EINVAL;
+//         }
 
 
-        // find the desired position based off of out_offs 
-        // need to do this because out_offs wont always be 0
-        for (uint8_t i = 0; i < seekto.write_cmd; i++) {
-            uint8_t idx = (dev->buffer.out_offs + i) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-            offset += dev->buffer.entry[idx].size;
-        }
-        offset += seekto.write_cmd_offset;
+//         // if (seekto.write_cmd >= entries_count) {
+//         //     PDEBUG("Invalid index, seekto.write was >= entries count");
+//         //     mutex_unlock(&dev->lock);
+//         //     return -EINVAL;
+//         // }
 
-        filp->f_pos = offset;
 
-        mutex_unlock(&dev->lock);
+//         // find entry containing desired location in circular buffer
+//         index = (dev->buffer.out_offs + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+//         entry = &dev->buffer.entry[index];
 
-        return 0;
-    }
+//         // check offset boundaries within the entry 
+//         if (seekto.write_cmd_offset >= entry->size) {
+//             PDEBUG("Invalid offset, seekto.write_cmd_offset was >= entries->size");
+//             mutex_unlock(&dev->lock);
+//             return -EINVAL;
+//         }
+
+//         PDEBUG("Seeking to write line %u, offset %u of circular buffer", seekto.write_cmd, seekto.write_cmd_offset);
+
+
+//         // find the desired position based off of out_offs 
+//         // need to do this because out_offs wont always be 0
+//         for (uint8_t i = 0; i < seekto.write_cmd; i++) {
+//             uint8_t idx = (dev->buffer.out_offs + i) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+//             offset += dev->buffer.entry[idx].size;
+//         }
+//         offset += seekto.write_cmd_offset;
+
+//         filp->f_pos = offset;
+
+//         mutex_unlock(&dev->lock);
+
+//         PDEBUG("Finished IOCTL!!!!");
+//         PDEBUG("Setting f_pos to: %lu", filp->f_pos);
+
+
+//         return 0;
+//     }
+// }
+
+
+static long aesd_adjust_file_offset(
+	struct file *filp,
+	unsigned int write_cmd,
+	unsigned int write_cmd_offset
+){
+	long retval = 0;
+
+    struct aesd_dev *dev = filp->private_data;
+
+	if (write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED){
+		return -EINVAL;
+	}
+
+	if (mutex_lock_interruptible(&dev->lock)){
+		return -ERESTARTSYS;
+	}
+
+	int i, cmd_offset = 0;
+	for (i = dev->buffer.out_offs; i < write_cmd + dev->buffer.out_offs; i++){
+		int curr_index = i % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+
+		cmd_offset += dev->buffer.entry[curr_index].size;
+	}
+
+	int cmd_index = (write_cmd + dev->buffer.out_offs)
+		% AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+
+	if (write_cmd_offset >= dev->buffer.entry[cmd_index].size){
+		return -EINVAL;
+	}
+
+	cmd_offset += write_cmd_offset;
+	filp->f_pos = cmd_offset;
+
+	mutex_unlock(&dev->lock);
+
+    return retval;
 }
+
+
+static long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
+	long retval = 0;
+
+    switch (cmd) {
+        case AESDCHAR_IOCSEEKTO: {
+			struct aesd_seekto seekto;
+
+			if (
+				copy_from_user(
+					&seekto,
+					(const void  __user *)arg,
+					sizeof(seekto)
+				) != 0
+			) {
+				retval = -EFAULT;
+			} else {
+				retval = aesd_adjust_file_offset(
+					filp,
+					seekto.write_cmd,
+					seekto.write_cmd_offset
+				);
+			}
+
+			break;
+		}
+	}
+
+	return retval;
+}
+
 
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
