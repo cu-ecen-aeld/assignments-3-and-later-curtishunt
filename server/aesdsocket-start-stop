@@ -1,23 +1,17 @@
-#!/bin/sh
+
+#! /bin/sh
 
 case "$1" in
-    start)
-        echo "Initializing char device module..."
-	insmod /lib/modules/aesdchar.ko
-	echo "Starting aesdsocket..."
-        start-stop-daemon -S -n aesdsocket -a aesdsocket -- -d
-        ;;
-    stop)
-        echo "Stopping aesdsocket..."
-        start-stop-daemon -K -n aesdsocket
-        echo "Removing char device module"
-	rmmod aesdchar
-	;;
-    *)
-        echo "Usage: $0 {start|stop}"
-        exit 1
-        ;;
+	start)
+		echo "Starting aesdsocket as daemon"
+		start-stop-daemon -S -n aesdsocket -a /usr/bin/aesdsocket -- -d
+		;;
+	stop)
+		echo "Stopping aesdsocket daemon"
+		start-stop-daemon -K -n aesdsocket
+		;;
+	*)
+		echo "Usage $0 {start|stop}"
+		exit 1
 esac
-
 exit 0
-
