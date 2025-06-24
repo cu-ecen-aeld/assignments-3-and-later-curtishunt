@@ -212,124 +212,108 @@ void signal_handler(int sig) {
     }
 }
 
-void *handle_connection(void *arg) {
-    // save argument then free the data
-    int tdata = *(int*)arg;
-    free(arg);
+void* handle_connection(void* conn_data){
+	int rc;
 
-    // set open file flags depending on using device or file
-    int open_flags;
-    #if USE_AESD_CHAR_DEVICE
-    open_flags = O_RDWR;  // for device file: read & write
-    #else
-    open_flags = O_WRONLY | O_CREAT | O_APPEND;
-    #endif
+	int tdata = *(int*)conn_data;
+    int total_bytes = 0;
+	int buffer_size = 1024;
+	char *buffer = (char*)malloc(buffer_size);
+	int bytes_received;
 
-    // make array for clients IP
+
+	// make array for clients IP
     char client_ip[INET_ADDRSTRLEN];
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
-
-    // this will get the IP addr and port number and save it into client_addr
-    getpeername(tdata, (struct sockaddr *)&client_addr, &client_len);
-    // Convert IP to a human readable string and save it to client_ip
-    inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+	getpeername(tdata, (struct sockaddr *)&client_addr, &client_len);
+	inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
     // Log the accepted connection
     syslog(LOG_INFO, "Accepted connection from %s", client_ip);
 
-    // open a file for appending data
-    int fp = open(FILE_IO, open_flags, 0644);
-    if(fp == -1){
-        syslog(LOG_ERR, "Client failed to open file.");
-        close (tdata);
-        return NULL;
-    } else {
-        syslog(LOG_INFO, "Opened file for writing data");
-    }
 
-    char buffer[BUFFER_SIZE];
+	while ((bytes_received = recv(tdata, buffer + total_bytes, buffer_size - total_bytes - 1, 0)) > 0){
+		total_bytes += bytes_received;
+		buffer[total_bytes] = '\0';
+		syslog(LOG_DEBUG, "Received bytes: %s of size %d\n", buffer, total_bytes);
 
-    ssize_t bytes_read;
-    
-    while ((bytes_read = recv(tdata, buffer, BUFFER_SIZE, 0)) > 0) {
+		if (bytes_received < 0){
+			syslog(LOG_ERR, "Error receiving data: %s\n", strerror(errno));
 
-        buffer[bytes_read] = '\0'; // Safe null-termination
+			return NULL;
+		}
+		if(strchr(buffer ,'\n') != NULL){
+			syslog(LOG_DEBUG, "Newline found, breaking. Full message: %s", buffer);
+			break;
+		}
 
-        if (strncmp(buffer, "AESDCHAR_IOCSEEKTO:", strlen("AESDCHAR_IOCSEEKTO:")) == 0) {
-            
-            syslog(LOG_DEBUG, "AESDCHAR_IOCSEEKTO = %ld", AESDCHAR_IOCSEEKTO);
-            syslog(LOG_DEBUG, "Received IOCTL string: %s", buffer);
-            
-            unsigned int cmd_idx, cmd_offset;
+		buffer_size += bytes_received;
+		buffer = realloc(buffer, buffer_size);
+	}
 
-            syslog(LOG_DEBUG, "Trying to parse: %s", buffer + 19);
+	FILE* file = fopen(FILE_IO, "r+");
+	if (file == NULL){
+		syslog(LOG_ERR, "Error opening file for read/write: %s\n", strerror(errno));
+		return NULL;
+	}
 
-            if (sscanf(buffer + 19, "%u,%u", &cmd_idx, &cmd_offset) == 2) {
-                struct aesd_seekto seekto = {
-                    .write_cmd = cmd_idx,
-                    .write_cmd_offset = cmd_offset
-                };
+	rc = pthread_mutex_lock(&file_mutex); 
+	if (rc != 0){
+		syslog(LOG_ERR, "Mutex lock failed to lock with %d", rc);
+		return NULL;
+	}
 
-                // Perform ioctl on the open file descriptor
-                if (ioctl(fp, AESDCHAR_IOCSEEKTO, &seekto) == -1) {
-                    syslog(LOG_ERR, "ioctl failed: %s", strerror(errno));
-                } else {
-                    syslog(LOG_INFO, "IOCTL SEEK successful: cmd=%u, offset=%u", cmd_idx, cmd_offset);
-                }
+	if (strncmp(buffer, "AESDCHAR_IOCSEEKTO:", strlen("AESDCHAR_IOCSEEKTO:")) == 0) {
+		syslog(LOG_DEBUG, "IOCTL received %s", buffer);
+		unsigned int write_cmd, write_cmd_offset;
+		if (sscanf(buffer, "AESDCHAR_IOCSEEKTO:%u,%u", &write_cmd, &write_cmd_offset) == 2) {
+			struct aesd_seekto seekto;
+			seekto.write_cmd = write_cmd;
+			seekto.write_cmd_offset = write_cmd_offset;
 
-                // Do NOT write this command to the device
-                continue;
-            } else {
-                syslog(LOG_ERR, "Malformed AESDCHAR_IOCSEEKTO command");
-                continue;
-            }
-        }
+			ioctl(fileno(file), AESDCHAR_IOCSEEKTO, &seekto);
+		}
+	} else {
+		syslog(LOG_DEBUG, "Writing to file %s", buffer);
+		if (fwrite(buffer, sizeof(char), total_bytes, file) < 0){
+			syslog(LOG_ERR, "Error writing to file: %s\n", strerror(errno));
 
-        
-        pthread_mutex_lock(&file_mutex);
-        if (write(fp, buffer, bytes_read) != bytes_read) {
-            syslog(LOG_ERR, "Failed to write received data to file: %s", strerror(errno));
-            pthread_mutex_unlock(&file_mutex);
-            break;
-        } 
-        fsync(fp);
-        pthread_mutex_unlock(&file_mutex);
-        syslog(LOG_INFO, "Read %ld bytes", bytes_read);
-        
-        // Check for end of data transfer
-        if (buffer[bytes_read - 1] == '\n') {
-            break;
-        }
-    }
-    // close(fp);
-    
+			return NULL;
+		}
 
-    if (bytes_read < 0) {
-        syslog(LOG_ERR, "Failed to receive data: %s, recv returned: %zd", strerror(errno), bytes_read);
-    }
+		fsync(fileno(file));
+		rewind(file);
+	}
 
-    // FILE *filehandle = fopen(FILE_IO, "r");
-    // if (filehandle == NULL) {
-    //     syslog(LOG_ERR, "Failed to open file for reading: %s", strerror(errno));
-    //     close(tdata);
-    //     return NULL;
-    // }
-    pthread_mutex_lock(&file_mutex);
+	rc = pthread_mutex_unlock(&file_mutex);
+	if (rc != 0){
+		syslog(LOG_ERR, "Mutex unlock failed to unlock with %d", rc);
 
-    while ((bytes_read = read(fp, buffer, BUFFER_SIZE)) > 0) {
-        if (send(tdata, buffer, bytes_read, 0) < 0) {
-            syslog(LOG_ERR, "Failed to send data to client: %s", strerror(errno));
-            break;
-        }
-    }
-    pthread_mutex_unlock(&file_mutex);
-    close(fp);
-    close(tdata);
+		return conn_data;
+	}
 
-    
+	char buff[1024] = { 0 };
+	int bytes_read;
+	while((bytes_read = fread(buff, sizeof(char), sizeof(buff), file)) > 0){
+		syslog(LOG_DEBUG, "Rading from file: %s", buff);
+		if (send(tdata, buff, bytes_read, 0) < 0){
+			syslog(LOG_ERR, "Error sending data: %s\n", strerror(errno));
+
+			return conn_data;
+		}
+	}
+	if (fclose(file) == EOF){
+		syslog(LOG_ERR, "Error closing the file: %s\n", strerror(errno));
+
+		return conn_data;
+	}
+
+	close(tdata);
     syslog(LOG_INFO, "Closed connection to %s", client_ip);
-    return NULL;
 
+	free(buffer);
+
+    return NULL;
 }
 
 #if !USE_AESD_CHAR_DEVICE
