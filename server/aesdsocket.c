@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <sys/queue.h>
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 #define PORT 9000
 #define BACKLOG 10
@@ -251,6 +252,40 @@ void *handle_connection(void *arg) {
     ssize_t bytes_read;
     
     while ((bytes_read = recv(tdata, buffer, BUFFER_SIZE, 0)) > 0) {
+
+        buffer[bytes_read] = '\0'; // Safe null-termination
+
+        if (strncmp(buffer, "AESDCHAR_IOCSEEKTO:", strlen("AESDCHAR_IOCSEEKTO:")) == 0) {
+            
+            syslog(LOG_DEBUG, "AESDCHAR_IOCSEEKTO = %ld", AESDCHAR_IOCSEEKTO);
+            syslog(LOG_DEBUG, "Received IOCTL string: %s", buffer);
+            
+            unsigned int cmd_idx, cmd_offset;
+
+            syslog(LOG_DEBUG, "Trying to parse: %s", buffer + 19);
+
+            if (sscanf(buffer + 19, "%u,%u", &cmd_idx, &cmd_offset) == 2) {
+                struct aesd_seekto seekto = {
+                    .write_cmd = cmd_idx,
+                    .write_cmd_offset = cmd_offset
+                };
+
+                // Perform ioctl on the open file descriptor
+                if (ioctl(fp, AESDCHAR_IOCSEEKTO, &seekto) == -1) {
+                    syslog(LOG_ERR, "ioctl failed: %s", strerror(errno));
+                } else {
+                    syslog(LOG_INFO, "IOCTL SEEK successful: cmd=%u, offset=%u", cmd_idx, cmd_offset);
+                }
+
+                // Do NOT write this command to the device
+                continue;
+            } else {
+                syslog(LOG_ERR, "Malformed AESDCHAR_IOCSEEKTO command");
+                continue;
+            }
+        }
+
+        
         pthread_mutex_lock(&file_mutex);
         if (write(fp, buffer, bytes_read) != bytes_read) {
             syslog(LOG_ERR, "Failed to write received data to file: %s", strerror(errno));
